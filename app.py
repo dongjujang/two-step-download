@@ -12,6 +12,27 @@ class IndexHandler(tornado.web.RequestHandler):
     self.finish()
 
 class DownloadHandler(tornado.web.RequestHandler):
+  def download(self, session, headers, download_url):
+    content_disposition = None    
+    response_file = None
+    index = 0
+    while True:
+      try:
+        response = session.get(("%s&no=%s" % (download_url, index)), headers=headers, stream=True)
+        if not response.ok:
+          break
+        content_disposition = response.headers.get('content-disposition', '')
+        if not '.torrent' in content_disposition:
+          index += 1
+          continue
+        response_file = response.raw.read()
+        break
+      except Exception as e:
+        print e
+        break
+      
+    return content_disposition, response_file
+  
   @tornado.web.asynchronous
   def get(self):
     referer = self.get_argument('referer')
@@ -37,18 +58,8 @@ class DownloadHandler(tornado.web.RequestHandler):
         status_code = 404
         break
 
-      try:
-        response = session.get(download_url, headers=headers, stream=True)
-        if not response.ok:
-          status_code = 400
-          break
-        content_disposition = response.headers.get('content-disposition', '')
-        response_file = response.raw.read()
-        if not response_file:
-          status_code = 404
-          break
-      except Exception as e:
-        print e
+      content_disposition, response_file = self.download(session, headers, download_url)
+      if not response_file:
         status_code = 404
         break
 
@@ -59,6 +70,8 @@ class DownloadHandler(tornado.web.RequestHandler):
     self.set_status(status_code)
     self.write(response_file)
     self.finish()
+
+
 
 application = tornado.web.Application([
     (r'/', IndexHandler),
